@@ -4,6 +4,7 @@ import { SOSRequest, LanguageCode, SOSStatus, GeoLocation, Rescuer, ChatMessage 
 import { TRANSLATIONS } from './constants';
 import * as storageService from './services/storageService';
 import RadarView from './components/RadarView';
+import AdminDashboard from './components/AdminDashboard';
 
 type UserMode = 'victim' | 'rescuer' | null;
 type SortOption = 'time' | 'distance';
@@ -41,6 +42,11 @@ const App: React.FC = () => {
   const [isMedicalEmergency, setIsMedicalEmergency] = useState(false);
   const [isEditingSOS, setIsEditingSOS] = useState(false);
 
+  // Manual Location Search State
+  const [manualSearchQuery, setManualSearchQuery] = useState('');
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [manualLocationResults, setManualLocationResults] = useState<any[]>([]);
+
   // Rescuer Logic & Modals
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [showRescueAttributionModal, setShowRescueAttributionModal] = useState(false);
@@ -62,7 +68,18 @@ const App: React.FC = () => {
   const [showChatModal, setShowChatModal] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // Admin State
+  const [showAdmin, setShowAdmin] = useState(false);
+
   const t = TRANSLATIONS[lang];
+
+  // Check URL for Admin Access
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('admin') === 'true') {
+        setShowAdmin(true);
+    }
+  }, []);
 
   // Persist language choice
   useEffect(() => {
@@ -89,7 +106,9 @@ const App: React.FC = () => {
       setLocationError("Geolocation not supported");
       return;
     }
-    setAddress(null);
+    // Only reset address if we don't have one (to allow manual override)
+    // setAddress(null); 
+    
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const lat = pos.coords.latitude;
@@ -123,6 +142,34 @@ const App: React.FC = () => {
       { enableHighAccuracy: true }
     );
   }, []);
+
+  const handleManualLocationSearch = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!manualSearchQuery.trim()) return;
+
+      setIsSearchingLocation(true);
+      setManualLocationResults([]);
+
+      try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(manualSearchQuery)}&countrycodes=my,th&limit=3`);
+          const data = await res.json();
+          setManualLocationResults(data);
+      } catch (err) {
+          console.error("Search failed", err);
+      } finally {
+          setIsSearchingLocation(false);
+      }
+  };
+
+  const selectManualLocation = (result: any) => {
+      const lat = parseFloat(result.lat);
+      const lng = parseFloat(result.lon);
+      setLocation({ lat, lng });
+      setAddress(result.display_name.split(',')[0]); // Use first part of address
+      setLocationError(null);
+      setManualLocationResults([]);
+      setManualSearchQuery('');
+  };
 
   // Async data refresh
   const refreshData = useCallback(async () => {
@@ -359,28 +406,50 @@ const App: React.FC = () => {
     }
   });
 
+  // --- Admin Mode ---
+  if (showAdmin) {
+    return (
+      <AdminDashboard 
+        t={t} 
+        onClose={() => {
+            setShowAdmin(false);
+            // Remove URL param on logout for cleaner URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete('admin');
+            window.history.replaceState({}, '', url);
+        }} 
+        allSOS={allSOS} 
+        allRescuers={allRescuers}
+        refreshData={refreshData}
+      />
+    );
+  }
+
   // --- Render Landing Page ---
   if (!userMode) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 max-w-md mx-auto shadow-2xl relative">
-         <div className="absolute top-6 right-6 flex items-center gap-2">
-             <span className="text-sm font-bold text-blue-600">{t.changeLang} --&gt;</span>
-            <select 
-                value={lang} 
-                onChange={(e) => setLang(e.target.value as LanguageCode)}
-                className="text-slate-700 text-lg font-bold py-2 px-4 rounded-lg border-2 border-blue-100 bg-blue-50 outline-none focus:border-blue-400 shadow-sm cursor-pointer"
-            >
-                <option value="en">English</option>
-                <option value="ms">Bahasa Melayu</option>
-                <option value="th">ภาษาไทย</option>
-            </select>
-         </div>
-         <div className="text-center mb-12 mt-12">
+         <div className="text-center mb-6 mt-12 w-full">
             <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
                 <i className="fa-solid fa-life-ring text-5xl text-white"></i>
             </div>
             <h1 className="text-4xl font-bold text-slate-800">{t.title}</h1>
             <p className="text-slate-500 mt-2">Emergency Flood Response</p>
+            
+            {/* Language Selector moved here */}
+            <div className="mt-6 flex items-center justify-center gap-2">
+                 <span className="text-sm font-bold text-blue-600">{t.changeLang}</span>
+                <select 
+                    value={lang} 
+                    onChange={(e) => setLang(e.target.value as LanguageCode)}
+                    className="text-slate-700 text-sm font-bold py-1 px-3 rounded-lg border border-blue-200 bg-blue-50 outline-none focus:border-blue-400 shadow-sm cursor-pointer"
+                >
+                    <option value="ms">Bahasa Melayu</option>
+                    <option value="en">English</option>
+                    <option value="th">ภาษาไทย</option>
+                    <option value="zh">中文 (简体)</option>
+                </select>
+             </div>
          </div>
 
          <div className="w-full space-y-4">
@@ -412,7 +481,7 @@ const App: React.FC = () => {
                 <span className="text-lg font-bold uppercase tracking-wider">{t.iWantToRescue}</span>
             </button>
          </div>
-         <footer className="absolute bottom-6 text-xs text-slate-300">
+         <footer className="absolute bottom-6 text-xs text-slate-300 w-full text-center">
             © 2024 SuaroAnokKelate
          </footer>
       </div>
@@ -432,8 +501,11 @@ const App: React.FC = () => {
                 }
                 <h1 className="text-xl font-bold text-slate-800">{t.title}</h1>
             </div>
-            <button onClick={() => { setUserMode(null); setLocation(null); }} className="text-slate-400 hover:text-slate-600 px-2">
-                <i className="fa-solid fa-house"></i>
+            <button 
+                onClick={() => { setUserMode(null); setLocation(null); }} 
+                className="text-slate-500 hover:text-slate-800 px-3 py-1 bg-slate-100 rounded-lg text-sm font-bold flex items-center gap-2"
+            >
+                <i className="fa-solid fa-arrow-left"></i> {t.back}
             </button>
           </div>
       </header>
@@ -540,6 +612,41 @@ const App: React.FC = () => {
                 <div className={`text-xs font-mono p-2 rounded flex justify-between ${location ? 'bg-white border border-green-200 text-green-700' : 'bg-white border border-orange-200 text-orange-700'}`}>
                   <span>{location ? (address ? address : t.locationFound) : (locationError || t.gettingLocation)}</span>
                   {location ? <i className="fa-solid fa-location-dot"></i> : <i className="fa-solid fa-spinner fa-spin"></i>}
+                </div>
+                
+                {/* Manual Location Search */}
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-500 mb-2">{t.manualLocationHelp}</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            value={manualSearchQuery} 
+                            onChange={(e) => setManualSearchQuery(e.target.value)}
+                            placeholder={t.searchLocation}
+                            className="flex-1 text-sm p-2 rounded border border-slate-300 bg-white"
+                        />
+                        <button 
+                            type="button" 
+                            onClick={handleManualLocationSearch}
+                            className="bg-blue-600 text-white px-3 py-2 rounded text-xs font-bold"
+                            disabled={isSearchingLocation}
+                        >
+                            {isSearchingLocation ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-magnifying-glass"></i>}
+                        </button>
+                    </div>
+                    {manualLocationResults.length > 0 && (
+                        <div className="mt-2 space-y-1 bg-white border border-slate-200 rounded max-h-32 overflow-y-auto">
+                            {manualLocationResults.map((res, idx) => (
+                                <div 
+                                    key={idx} 
+                                    onClick={() => selectManualLocation(res)}
+                                    className="p-2 text-xs border-b border-slate-50 hover:bg-blue-50 cursor-pointer truncate"
+                                >
+                                    {res.display_name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div>
@@ -683,17 +790,6 @@ const App: React.FC = () => {
                     )}
                   </div>
                 )})}
-            </div>
-            
-            <div className="pt-6 pb-2 text-center">
-                <a 
-                    href="#" 
-                    onClick={(e) => { e.preventDefault(); alert("This would link to the external Admin Web Dashboard."); }}
-                    className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-colors border border-slate-200 rounded-full px-4 py-2 hover:bg-slate-50"
-                >
-                    <i className="fa-solid fa-chart-pie"></i>
-                    {t.adminDashboard}
-                </a>
             </div>
           </div>
         )}

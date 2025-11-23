@@ -193,6 +193,16 @@ const saveRescuerToCloud = async (rescuer: Rescuer) => {
   }
 };
 
+const deleteFromCloud = async (id: string) => {
+  if (!supabase || hasCloudError) return;
+  try {
+      const { error } = await supabase.from('app_data').delete().eq('id', id);
+      if (error) throw error;
+  } catch(e) {
+      handleCloudError(e);
+  }
+}
+
 export const createSOS = async (sos: Omit<SOSRequest, 'id' | 'timestamp' | 'status' | 'messages'>): Promise<SOSRequest> => {
   const newSOS: SOSRequest = {
     ...sos,
@@ -207,11 +217,6 @@ export const createSOS = async (sos: Omit<SOSRequest, 'id' | 'timestamp' | 'stat
   }
   
   // Always save local as backup/cache
-  const all = await fetchSOS(); // This fetches local if cloud disabled, or cloud if enabled (but cloud might fail)
-  // We need to ensure we don't duplicate if fetchSOS returned cloud data but saveToCloud failed.
-  // Simplest strategy for hybrid: Always read/write local, optionally write cloud.
-  
-  // Refetch local specifically for updating cache
   const localData = localStorage.getItem(STORAGE_KEY);
   const currentLocal: SOSRequest[] = localData ? JSON.parse(localData) : SEED_DATA;
   
@@ -273,6 +278,38 @@ export const updateSOSDetails = async (id: string, details: Partial<SOSRequest>)
   
   notifyUpdates();
 };
+
+export const deleteSOS = async (id: string): Promise<void> => {
+    if (isCloudEnabled && !hasCloudError) {
+        await deleteFromCloud(`sos_${id}`);
+    }
+
+    const localData = localStorage.getItem(STORAGE_KEY);
+    if (localData) {
+        const currentLocal: SOSRequest[] = JSON.parse(localData);
+        const updatedAll = currentLocal.filter(s => s.id !== id);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedAll));
+    }
+    
+    if (localStorage.getItem(USER_SOS_KEY) === id) {
+        localStorage.removeItem(USER_SOS_KEY);
+    }
+    notifyUpdates();
+}
+
+export const deleteRescuer = async (id: string): Promise<void> => {
+    if (isCloudEnabled && !hasCloudError) {
+        await deleteFromCloud(`rescuer_${id}`);
+    }
+    
+    const localData = localStorage.getItem(RESCUERS_KEY);
+    if (localData) {
+        const currentLocal: Rescuer[] = JSON.parse(localData);
+        const updatedAll = currentLocal.filter(r => r.id !== id);
+        localStorage.setItem(RESCUERS_KEY, JSON.stringify(updatedAll));
+    }
+    notifyUpdates();
+}
 
 export const addMessage = async (sosId: string, message: ChatMessage): Promise<void> => {
   const all = await fetchSOS();

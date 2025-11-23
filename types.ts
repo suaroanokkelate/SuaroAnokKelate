@@ -1,5 +1,5 @@
 
-export type LanguageCode = 'en' | 'ms' | 'th';
+export type LanguageCode = 'en' | 'ms' | 'th' | 'zh';
 
 export enum SOSStatus {
   ACTIVE = 'ACTIVE',
@@ -112,10 +112,33 @@ export interface Translation {
   invalidId: string;
   registerSuccess: string;
   sincereTeamName: string;
+  // Manual Location & Navigation
+  back: string;
+  searchLocation: string;
+  manualLocationHelp: string;
+  searching: string;
+  useLocation: string;
+  noResults: string;
+  // Admin Dashboard
+  adminLogin: string;
+  enterPin: string;
+  login: string;
+  logout: string;
+  overview: string;
+  dataManagement: string;
+  totalVictims: string;
+  activeRequests: string;
+  medicalNeeds: string;
+  totalRescuers: string;
+  delete: string;
+  edit: string;
+  confirmDelete: string;
+  password: string;
 }
 
 export interface Dictionary {
   en: Translation;
   ms: Translation;
   th: Translation;
+  zh: Translation;
 }
