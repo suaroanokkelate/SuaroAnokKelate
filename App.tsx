@@ -15,7 +15,7 @@ const App: React.FC = () => {
       return (saved as LanguageCode) || 'ms';
   });
   
-  // Initialize user mode from local storage to prevent reset on refresh
+  // Initialize user mode from local storage
   const [userMode, setUserMode] = useState<UserMode>(() => {
       const savedMode = localStorage.getItem('suarobanjir_mode');
       return (savedMode as UserMode) || null;
@@ -80,8 +80,6 @@ const App: React.FC = () => {
 
   // Handle Tab Switching based on Mode
   useEffect(() => {
-    // Only set default tab if we just switched modes, but allow navigation within mode
-    // We'll trust the user's manual navigation or set default on initial mode set
     if (userMode === 'victim' && activeTab === 'league') setActiveTab('sos');
     if (userMode === 'rescuer' && activeTab === 'sos') setActiveTab('map');
   }, [userMode, activeTab]);
@@ -99,19 +97,17 @@ const App: React.FC = () => {
         setLocation({ lat, lng });
         setLocationError(null);
 
-        // Reverse Geocoding via Nominatim (OpenStreetMap)
+        // Reverse Geocoding
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
             const data = await res.json();
             if (data && data.address) {
                 const a = data.address;
-                // Construct a concise address string: Road, Village/Suburb, Town
                 const parts = [
                     a.road,
                     a.village || a.suburb || a.residential || a.neighbourhood,
                     a.town || a.city || a.district
                 ].filter(Boolean);
-                // Remove duplicates and join
                 const uniqueParts = [...new Set(parts)];
                 if (uniqueParts.length > 0) {
                     setAddress(uniqueParts.join(', '));
@@ -128,10 +124,11 @@ const App: React.FC = () => {
     );
   }, []);
 
-  const refreshData = useCallback(() => {
-    const sosData = storageService.getAllSOS();
-    const mySos = storageService.getMySOS();
-    const rescuers = storageService.getAllRescuers();
+  // Async data refresh
+  const refreshData = useCallback(async () => {
+    const sosData = await storageService.fetchSOS();
+    const mySos = await storageService.getMySOS();
+    const rescuers = await storageService.fetchRescuers();
     
     setAllSOS(sosData);
     setActiveSOS(mySos);
@@ -142,11 +139,11 @@ const App: React.FC = () => {
     fetchLocation();
     refreshData();
     
-    // Subscribe to cross-tab updates
+    // Subscribe to cross-tab updates (and cloud updates if enabled)
     const unsubscribe = storageService.subscribeToChanges(refreshData);
     
-    // Fallback polling
-    const interval = setInterval(refreshData, 3000); 
+    // Polling is less necessary with Supabase realtime, but good fallback
+    const interval = setInterval(refreshData, 5000); 
     
     return () => {
         clearInterval(interval);
@@ -180,16 +177,15 @@ const App: React.FC = () => {
         if (!proceed) return;
     }
 
-    storageService.createSOS({
+    await storageService.createSOS({
       name,
       phone,
       landmark,
-      location, // might be null, but that's allowed now
+      location,
       isMedicalEmergency,
       message: ''
     });
     refreshData();
-    // No need to switch tab, stay on confirmation screen
   };
 
   const startEditing = () => {
@@ -206,18 +202,18 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSOS = (e: React.FormEvent) => {
+  const handleUpdateSOS = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeSOS) return;
-    storageService.updateSOSDetails(activeSOS.id, { name, phone, landmark, isMedicalEmergency });
+    await storageService.updateSOSDetails(activeSOS.id, { name, phone, landmark, isMedicalEmergency });
     setIsEditingSOS(false);
     refreshData();
   };
 
-  const handleQuickUpdate = () => {
+  const handleQuickUpdate = async () => {
     if (!activeSOS) return;
     if (window.confirm("Update your request with current details and location?")) {
-        storageService.updateSOSDetails(activeSOS.id, {
+        await storageService.updateSOSDetails(activeSOS.id, {
             name, phone, landmark, isMedicalEmergency,
             location: location || activeSOS.location
         });
@@ -225,19 +221,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMarkSafe = (id?: string | React.MouseEvent) => {
+  const handleMarkSafe = async (id?: string | React.MouseEvent) => {
     const targetId = typeof id === 'string' ? id : activeSOS?.id;
     if (targetId) {
-      storageService.updateSOSStatus(targetId, SOSStatus.SAFE);
+      await storageService.updateSOSStatus(targetId, SOSStatus.SAFE);
       refreshData();
       if (activeSOS && targetId === activeSOS.id) setActiveSOS(undefined);
     }
   };
 
-  const handleVictimMarkRescued = () => {
+  const handleVictimMarkRescued = async () => {
     if (activeSOS) {
         if(window.confirm("Confirm you have been rescued?")) {
-           storageService.updateSOSStatus(activeSOS.id, SOSStatus.RESCUED);
+           await storageService.updateSOSStatus(activeSOS.id, SOSStatus.RESCUED);
            refreshData();
            setActiveSOS(undefined);
         }
@@ -246,30 +242,29 @@ const App: React.FC = () => {
 
   // --- Rescuer Flow ---
 
-  const initiateRescue = (sosId: string) => {
+  const initiateRescue = async (sosId: string) => {
     setPendingRescueId(sosId);
-    setAttributionID(''); // Clear previous input
-    // Check for local rescuer ID to autofill
-    const local = storageService.getLocalRescuer();
+    setAttributionID(''); 
+    const local = await storageService.getLocalRescuer();
     if (local) {
         setAttributionID(local.id);
     }
     setShowRescueAttributionModal(true);
   };
 
-  const submitRescueAttribution = (e?: React.FormEvent) => {
+  const submitRescueAttribution = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!pendingRescueId) return;
     
     if (attributionID) {
-        if (!storageService.isValidRescuerID(attributionID)) {
+        const isValid = await storageService.isValidRescuerID(attributionID);
+        if (!isValid) {
             alert(t.invalidId);
             return;
         }
-        storageService.processRescue(pendingRescueId, attributionID);
+        await storageService.processRescue(pendingRescueId, attributionID);
     } else {
-        // Should not happen via form submit, but handled in sincere handler
-        storageService.processRescue(pendingRescueId);
+        await storageService.processRescue(pendingRescueId);
     }
     
     refreshData();
@@ -277,9 +272,9 @@ const App: React.FC = () => {
     setPendingRescueId(null);
   };
 
-  const handleSincereRescue = () => {
+  const handleSincereRescue = async () => {
       if (!pendingRescueId) return;
-      storageService.processRescue(pendingRescueId); // No ID = Sincere
+      await storageService.processRescue(pendingRescueId); 
       refreshData();
       setShowRescueAttributionModal(false);
       setPendingRescueId(null);
@@ -294,9 +289,9 @@ const App: React.FC = () => {
       setShowRegistrationModal(true);
   };
 
-  const handleRegistration = (e: React.FormEvent) => {
+  const handleRegistration = async (e: React.FormEvent) => {
       e.preventDefault();
-      const newRescuer = storageService.registerRescuer(regUsername, regName, regPhone);
+      const newRescuer = await storageService.registerRescuer(regUsername, regName, regPhone);
       setNewRescuerID(newRescuer.id);
       setShowRegistrationModal(false);
       setShowGeneratedIDModal(true);
@@ -310,7 +305,7 @@ const App: React.FC = () => {
     setShowChatModal(true);
   };
 
-  const sendChatMessage = (e: React.FormEvent) => {
+  const sendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
 
@@ -318,10 +313,10 @@ const App: React.FC = () => {
     if (!targetId) return;
 
     const sender = userMode === 'rescuer' ? 'rescuer' : 'victim';
-    const localRescuer = storageService.getLocalRescuer();
+    const localRescuer = await storageService.getLocalRescuer();
     const senderName = sender === 'rescuer' ? (localRescuer?.username || localRescuer?.name || t.rescuerLabel) : (activeSOS?.name || t.victimLabel);
 
-    storageService.addMessage(targetId, {
+    await storageService.addMessage(targetId, {
         sender,
         text: chatMessage,
         timestamp: Date.now(),
@@ -341,7 +336,7 @@ const App: React.FC = () => {
       Math.cos(location.lat * Math.PI / 180) * Math.cos(target.lat * Math.PI / 180) * 
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // returns km
+    return R * c; 
   };
 
   const formatDistance = (distKm: number) => {
