@@ -1,0 +1,8 @@
+{
+  "name": "SuaroBanjir",
+  "description": "A multi-language emergency response app for flood victims to send SOS signals and for rescuers to locate them.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ]
+}
