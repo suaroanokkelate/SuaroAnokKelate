@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('sos'); // 'sos', 'map', 'league'
 
   const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [activeSOS, setActiveSOS] = useState<SOSRequest | undefined>(undefined);
   const [allSOS, setAllSOS] = useState<SOSRequest[]>([]);
@@ -74,13 +75,36 @@ const App: React.FC = () => {
       setLocationError("Geolocation not supported");
       return;
     }
+    setAddress(null);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        });
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({ lat, lng });
         setLocationError(null);
+
+        // Reverse Geocoding via Nominatim (OpenStreetMap)
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+            const data = await res.json();
+            if (data && data.address) {
+                const a = data.address;
+                // Construct a concise address string: Road, Village/Suburb, Town
+                const parts = [
+                    a.road,
+                    a.village || a.suburb || a.residential || a.neighbourhood,
+                    a.town || a.city || a.district
+                ].filter(Boolean);
+                // Remove duplicates and join
+                const uniqueParts = [...new Set(parts)];
+                if (uniqueParts.length > 0) {
+                    setAddress(uniqueParts.join(', '));
+                }
+            }
+        } catch (e) {
+            console.error("Geocoding error:", e);
+            // Fail silently, standard location locked message will show
+        }
       },
       (err) => {
         setLocationError(err.message);
@@ -473,7 +497,7 @@ const App: React.FC = () => {
               /* SOS Form */
               <form onSubmit={isEditingSOS ? handleUpdateSOS : handleSendSOS} className="bg-white rounded-xl p-5 shadow-lg border border-slate-100 space-y-4">
                 <div className={`text-xs font-mono p-2 rounded flex justify-between ${location ? 'bg-white border border-green-200 text-green-700' : 'bg-white border border-orange-200 text-orange-700'}`}>
-                  <span>{location ? t.locationFound : t.gettingLocation}</span>
+                  <span>{location ? (address ? address : t.locationFound) : t.gettingLocation}</span>
                   {location && <i className="fa-solid fa-location-dot"></i>}
                 </div>
 
