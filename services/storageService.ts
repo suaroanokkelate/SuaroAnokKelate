@@ -8,6 +8,9 @@ const LOCAL_RESCUER_ID_KEY = 'floodguard_local_rescuer_id';
 
 export const SINCERE_TEAM_ID = '000';
 
+// Broadcast channel for cross-tab synchronization
+const channel = new BroadcastChannel('suarobanjir_updates');
+
 // Seed some data for visualization
 const SEED_DATA: SOSRequest[] = [
   {
@@ -41,6 +44,15 @@ const SEED_RESCUERS: Rescuer[] = [
   { id: '204', username: 'rescue_john', name: 'John Doe', phone: '011-1111111', rescuesCount: 8 },
 ];
 
+const notifyUpdates = () => {
+  channel.postMessage({ type: 'UPDATE' });
+};
+
+export const subscribeToChanges = (callback: () => void) => {
+  channel.onmessage = () => callback();
+  return () => { channel.onmessage = null; };
+};
+
 export const getAllSOS = (): SOSRequest[] => {
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) {
@@ -63,6 +75,7 @@ export const createSOS = (sos: Omit<SOSRequest, 'id' | 'timestamp' | 'status' | 
   all.push(newSOS);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   localStorage.setItem(USER_SOS_KEY, newSOS.id);
+  notifyUpdates();
   return newSOS;
 };
 
@@ -81,6 +94,7 @@ export const updateSOSStatus = (id: string, status: SOSStatus, rescuerId?: strin
   if (id === myId && (status === SOSStatus.SAFE || status === SOSStatus.RESCUED)) {
      localStorage.removeItem(USER_SOS_KEY);
   }
+  notifyUpdates();
 };
 
 export const updateSOSDetails = (id: string, details: Partial<SOSRequest>): void => {
@@ -92,6 +106,7 @@ export const updateSOSDetails = (id: string, details: Partial<SOSRequest>): void
     return item;
   });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  notifyUpdates();
 };
 
 export const addMessage = (sosId: string, message: ChatMessage): void => {
@@ -104,6 +119,7 @@ export const addMessage = (sosId: string, message: ChatMessage): void => {
     return item;
   });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  notifyUpdates();
 };
 
 export const getMySOSId = (): string | null => {
@@ -157,6 +173,7 @@ export const registerRescuer = (username: string, name: string, phone: string): 
   rescuers.push(newRescuer);
   localStorage.setItem(RESCUERS_KEY, JSON.stringify(rescuers));
   localStorage.setItem(LOCAL_RESCUER_ID_KEY, newRescuer.id);
+  notifyUpdates();
   return newRescuer;
 };
 
@@ -194,4 +211,5 @@ export const processRescue = (sosId: string, rescuerId?: string) => {
   
   // Update SOS Status
   updateSOSStatus(sosId, SOSStatus.RESCUED, targetId);
+  notifyUpdates();
 };

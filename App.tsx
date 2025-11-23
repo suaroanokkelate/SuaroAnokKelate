@@ -15,7 +15,12 @@ const App: React.FC = () => {
       return (saved as LanguageCode) || 'ms';
   });
   
-  const [userMode, setUserMode] = useState<UserMode>(null);
+  // Initialize user mode from local storage to prevent reset on refresh
+  const [userMode, setUserMode] = useState<UserMode>(() => {
+      const savedMode = localStorage.getItem('suarobanjir_mode');
+      return (savedMode as UserMode) || null;
+  });
+
   const [activeTab, setActiveTab] = useState<string>('sos'); // 'sos', 'map', 'league'
 
   const [location, setLocation] = useState<GeoLocation | null>(null);
@@ -64,11 +69,22 @@ const App: React.FC = () => {
     localStorage.setItem('suarobanjir_lang', lang);
   }, [lang]);
 
+  // Persist User Mode
+  useEffect(() => {
+    if (userMode) {
+        localStorage.setItem('suarobanjir_mode', userMode);
+    } else {
+        localStorage.removeItem('suarobanjir_mode');
+    }
+  }, [userMode]);
+
   // Handle Tab Switching based on Mode
   useEffect(() => {
-    if (userMode === 'victim') setActiveTab('sos');
-    if (userMode === 'rescuer') setActiveTab('map');
-  }, [userMode]);
+    // Only set default tab if we just switched modes, but allow navigation within mode
+    // We'll trust the user's manual navigation or set default on initial mode set
+    if (userMode === 'victim' && activeTab === 'league') setActiveTab('sos');
+    if (userMode === 'rescuer' && activeTab === 'sos') setActiveTab('map');
+  }, [userMode, activeTab]);
 
   const fetchLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -103,7 +119,6 @@ const App: React.FC = () => {
             }
         } catch (e) {
             console.error("Geocoding error:", e);
-            // Fail silently, standard location locked message will show
         }
       },
       (err) => {
@@ -114,16 +129,29 @@ const App: React.FC = () => {
   }, []);
 
   const refreshData = useCallback(() => {
-    setAllSOS(storageService.getAllSOS());
-    setActiveSOS(storageService.getMySOS());
-    setAllRescuers(storageService.getAllRescuers().sort((a, b) => b.rescuesCount - a.rescuesCount));
+    const sosData = storageService.getAllSOS();
+    const mySos = storageService.getMySOS();
+    const rescuers = storageService.getAllRescuers();
+    
+    setAllSOS(sosData);
+    setActiveSOS(mySos);
+    setAllRescuers(rescuers.sort((a, b) => b.rescuesCount - a.rescuesCount));
   }, []);
 
   useEffect(() => {
     fetchLocation();
     refreshData();
-    const interval = setInterval(refreshData, 3000); // Faster polling for chat
-    return () => clearInterval(interval);
+    
+    // Subscribe to cross-tab updates
+    const unsubscribe = storageService.subscribeToChanges(refreshData);
+    
+    // Fallback polling
+    const interval = setInterval(refreshData, 3000); 
+    
+    return () => {
+        clearInterval(interval);
+        unsubscribe();
+    };
   }, [fetchLocation, refreshData]);
 
   // Auto-scroll chat
@@ -147,15 +175,21 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!name || !phone) return;
 
+    if (!location) {
+        const proceed = window.confirm("GPS Location not found yet. Submit anyway? Rescuers will rely on your landmark description.");
+        if (!proceed) return;
+    }
+
     storageService.createSOS({
       name,
       phone,
       landmark,
-      location,
+      location, // might be null, but that's allowed now
       isMedicalEmergency,
       message: ''
     });
     refreshData();
+    // No need to switch tab, stay on confirmation screen
   };
 
   const startEditing = () => {
@@ -403,7 +437,7 @@ const App: React.FC = () => {
                 }
                 <h1 className="text-xl font-bold text-slate-800">{t.title}</h1>
             </div>
-            <button onClick={() => setUserMode(null)} className="text-slate-400 hover:text-slate-600 px-2">
+            <button onClick={() => { setUserMode(null); setLocation(null); }} className="text-slate-400 hover:text-slate-600 px-2">
                 <i className="fa-solid fa-house"></i>
             </button>
           </div>
@@ -509,8 +543,8 @@ const App: React.FC = () => {
               /* SOS Form */
               <form onSubmit={isEditingSOS ? handleUpdateSOS : handleSendSOS} className="bg-white rounded-xl p-5 shadow-lg border border-slate-100 space-y-4">
                 <div className={`text-xs font-mono p-2 rounded flex justify-between ${location ? 'bg-white border border-green-200 text-green-700' : 'bg-white border border-orange-200 text-orange-700'}`}>
-                  <span>{location ? (address ? address : t.locationFound) : t.gettingLocation}</span>
-                  {location && <i className="fa-solid fa-location-dot"></i>}
+                  <span>{location ? (address ? address : t.locationFound) : (locationError || t.gettingLocation)}</span>
+                  {location ? <i className="fa-solid fa-location-dot"></i> : <i className="fa-solid fa-spinner fa-spin"></i>}
                 </div>
 
                 <div>
@@ -538,7 +572,7 @@ const App: React.FC = () => {
                      <button type="submit" className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg">{t.updateSOS}</button>
                   </div>
                 ) : (
-                  <button type="submit" disabled={!location} className="w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-bold py-4 rounded-lg shadow-lg">
+                  <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg shadow-lg">
                     {t.submit}
                   </button>
                 )}
@@ -589,6 +623,11 @@ const App: React.FC = () => {
             <RadarView requests={filteredSOS} myLocation={location} mySOSId={activeSOS?.id} />
 
             <div className="space-y-3 mt-4">
+              {sortedSOS.length === 0 && (
+                  <div className="text-center py-8 text-slate-400 italic">
+                      {t.noSOS}
+                  </div>
+              )}
               {sortedSOS.map((req) => {
                   const isMe = req.id === activeSOS?.id;
                   const isMedical = req.isMedicalEmergency;
@@ -618,7 +657,7 @@ const App: React.FC = () => {
                         <p className="text-xs text-slate-500"><i className="fa-solid fa-phone mr-1"></i> {req.phone}</p>
                         {req.landmark && <p className="text-xs text-slate-600 mt-1 bg-slate-50 p-1 rounded inline-block">{req.landmark}</p>}
                       </div>
-                      {req.location && location && (
+                      {req.location && (
                         <div className="text-right">
                            <span className="text-xs font-bold text-slate-400 block">{formatDistance(distanceNum)}</span>
                            <a href={`https://www.google.com/maps/search/?api=1&query=${req.location.lat},${req.location.lng}`} target="_blank" rel="noreferrer" className="text-blue-600 text-xs hover:underline">
