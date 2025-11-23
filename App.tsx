@@ -334,7 +334,7 @@ const App: React.FC = () => {
   if (!userMode) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 max-w-md mx-auto shadow-2xl relative">
-         <div className="absolute top-6 right-6 flex items-center gap-2 animate-bounce-x">
+         <div className="absolute top-6 right-6 flex items-center gap-2">
              <span className="text-sm font-bold text-blue-600">{t.changeLang} --&gt;</span>
             <select 
                 value={lang} 

@@ -1,21 +1,55 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FloodGuard SOS</title>
+    <title>SuaroBanjir</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <style>
       /* Minimal resets */
       body { margin: 0; font-family: sans-serif; -webkit-font-smoothing: antialiased; }
+
+      /* Custom Animations */
+      @keyframes bounce-x {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(25%); }
+      }
+      .animate-bounce-x {
+        animation: bounce-x 1s infinite;
+      }
+
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.3s ease-out forwards;
+      }
+
+      @keyframes scale-up {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .animate-scale-up {
+        animation: scale-up 0.2s ease-out forwards;
+      }
+      
+      /* Hide Scrollbar */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
     </style>
   <script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "d3": "https://aistudiocdn.com/d3@^7.9.0"
   }
