@@ -89,6 +89,7 @@ export interface Translation {
   // Landing & Chat
   modeSOS: string;
   modeRescue: string;
+  iWantToRescue: string;
   chat: string;
   sendMessage: string;
   typeMessage: string;

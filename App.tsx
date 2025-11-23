@@ -9,10 +9,10 @@ type UserMode = 'victim' | 'rescuer' | null;
 type SortOption = 'time' | 'distance';
 
 const App: React.FC = () => {
-  // Initialize language from local storage or default to 'en'
+  // Initialize language from local storage or default to 'ms'
   const [lang, setLang] = useState<LanguageCode>(() => {
       const saved = localStorage.getItem('suarobanjir_lang');
-      return (saved as LanguageCode) || 'en';
+      return (saved as LanguageCode) || 'ms';
   });
   
   const [userMode, setUserMode] = useState<UserMode>(null);
@@ -354,7 +354,7 @@ const App: React.FC = () => {
             <p className="text-slate-500 mt-2">Emergency Flood Response</p>
          </div>
 
-         <div className="w-full space-y-6">
+         <div className="w-full space-y-4">
             <button 
                 onClick={() => setUserMode('victim')}
                 className="w-full bg-red-600 hover:bg-red-700 text-white py-8 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-2 transition-transform active:scale-95"
@@ -369,6 +369,18 @@ const App: React.FC = () => {
             >
                 <i className="fa-solid fa-hand-holding-heart text-4xl"></i>
                 <span className="text-xl font-bold uppercase tracking-wider">{t.modeRescue}</span>
+            </button>
+
+            <button 
+                onClick={() => {
+                    setUserMode('rescuer');
+                    setActiveTab('league');
+                    setShowRegistrationModal(true);
+                }}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-6 rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-95"
+            >
+                <i className="fa-solid fa-user-plus text-2xl"></i>
+                <span className="text-lg font-bold uppercase tracking-wider">{t.iWantToRescue}</span>
             </button>
          </div>
          <footer className="absolute bottom-6 text-xs text-slate-300">
